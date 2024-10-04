@@ -1,0 +1,51 @@
+---
+- name: Docker compile CMakeList
+  hosts: all
+  become: yes
+  tasks:
+    - name: Download SQLite
+      get_url:
+        url: https://www.sqlite.org/2018/sqlite-amalgamation-3260000.zip
+        dest: /tmp/sqlite-amalgamation-3260000.zip
+        mode: 0755
+
+    - name: Unzip SQLite source
+      unarchive:
+        src: /tmp/sqlite-amalgamation-3260000.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Create CMakeLists.txt
+      copy:
+          content: |
+            cmake_minimum_required(VERSION 3.10)
+            project(myproject)
+            set(CMAKE_C_COMPILER "gcc")
+            set(CMAKE_C_STANDARD 11)
+            set(CMAKE_C_STANDARD_REQUIRED ON)
+            add_executable(${PROJECT_NAME} shell.c)
+            add_library(sqlite3 STATIC ${CMAKE_CURRENT_SOURCE_DIR}/sqlite3.c)
+            target_link_libraries(${PROJECT_NAME} sqlite3)
+            target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/)
+          dest: "/tmp/sqlite-amalgamation-3260000/CMakeLists.txt"
+          mode: '0644'
+
+    - name: Create Dockerfile
+      copy:
+        content: |
+          FROM alpine:latest
+          RUN apk --no-cache add cmake clang clang-dev make gcc g++ libc-dev linux-headers
+          COPY . .
+          RUN cmake .
+          RUN cmake --build . -v > log.txt
+          RUN make
+          CMD ["./myproject"]
+        dest: /tmp/sqlite-amalgamation-3260000/Dockerfile
+
+    - name: Build Docker image
+      docker_image:
+        name: sqlite
+        build:
+          path: /tmp/sqlite-amalgamation-3260000
+        source: build
+        tag: latest
